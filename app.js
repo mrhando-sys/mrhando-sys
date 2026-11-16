@@ -1,4 +1,5 @@
 'use strict';
+const API_URL = 'https://script.google.com/macros/s/AKfycbzN-H2HfgSXvUOjANr7Gzs04acBSIY9AWC84YjciKcaA1zuugqdmyRXPcMj-DtRd0DC/exec';
 const KATEGORI_AWAL = {
   keluar: ['Makan', 'Transport', 'Tagihan', 'Belanja', 'Hiburan', 'Kesehatan', 'Pendidikan', 'Lainnya'],
   masuk: ['Gaji', 'Bonus', 'Usaha', 'Investasi', 'Hadiah', 'Lainnya']
@@ -49,7 +50,7 @@ const labelGrup = s => {
 let cache = [];
 try { cache = JSON.parse(localStorage.getItem('cache') || '[]'); } catch (e) { }
 const state = {
-  api: localStorage.getItem('api') || '', pin: localStorage.getItem('pin') || '',
+  api: API_URL, user: localStorage.getItem('user') || '', pin: localStorage.getItem('pin') || '',
   data: cache, tab: 'beranda', periode: 'bulan', dari: '', sampai: '',
   loading: false, error: '', dilewati: 0, terakhir: 0,
   r: { q: '', jenis: 'semua', kat: '', dari: '', sampai: '', limit: 60, buka: false }
@@ -61,7 +62,7 @@ async function panggil(aksi, data = {}) {
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), 30000);
   try {
-    const res = await fetch(state.api, { method: 'POST', body: JSON.stringify({ aksi, pin: state.pin, ...data }), signal: ctrl.signal });
+    const res = await fetch(state.api, { method: 'POST', body: JSON.stringify({ aksi, user: state.user, pin: state.pin, ...data }), signal: ctrl.signal });
     const j = await res.json();
     if (!j.ok) throw Object.assign(new Error(j.pesan || 'Terjadi kesalahan.'), { kode: j.kode });
     return j;
@@ -385,25 +386,26 @@ async function hapusYa() {
 function tampilLogin(pesan = '') {
   $('#app').classList.add('hidden'); $('#nav').classList.add('hidden');
   const el = $('#login'); el.classList.remove('hidden');
-  el.innerHTML = `<div class="login-in"><div class="orb besar">${ic('lock', 36)}</div><h1>Keuangan Pribadi</h1><p>Masukkan PIN untuk membuka.</p>
-    ${state.api ? '' : '<input id="lApi" class="in" type="url" inputmode="url" placeholder="URL Web App (https://script.google.com/…/exec)" autocomplete="off">'}
+  el.innerHTML = `<div class="login-in"><div class="orb besar">${ic('lock', 36)}</div><h1>Keuangan Pribadi</h1><p>Masuk untuk membuka.</p>
+    <input id="lUser" class="in" type="text" placeholder="Username" autocomplete="username" autocapitalize="none" autocorrect="off" value="${esc(state.user)}">
     <input id="lPin" class="in pin" type="password" inputmode="numeric" placeholder="PIN" autocomplete="current-password">
     <p class="err" id="lErr">${esc(pesan)}</p><button class="btn" id="lBtn" data-aksi="masuk">Masuk</button></div>`;
 }
 async function masuk() {
-  const api = state.api || ($('#lApi') ? $('#lApi').value.trim() : ''), pin = $('#lPin').value.trim(), err = $('#lErr'), btn = $('#lBtn');
-  if (!api.startsWith('https://script.google.com/')) { err.textContent = 'URL Web App belum benar. Salin lagi dari Apps Script.'; return; }
+  const user = $('#lUser').value.trim(), pin = $('#lPin').value.trim(), err = $('#lErr'), btn = $('#lBtn');
+  if (!API_URL.startsWith('https://script.google.com/')) { err.textContent = 'URL Web App di app.js belum diisi dengan benar.'; return; }
+  if (!user) { err.textContent = 'Username wajib diisi.'; return; }
   if (!pin) { err.textContent = 'PIN wajib diisi.'; return; }
   btn.disabled = true; btn.innerHTML = '<i class="spin"></i>'; err.textContent = '';
-  const lamaApi = state.api; state.api = api; state.pin = pin;
+  state.user = user; state.pin = pin;
   try {
     const j = await panggil('baca');
-    localStorage.setItem('api', api); localStorage.setItem('pin', pin);
+    localStorage.setItem('user', user); localStorage.setItem('pin', pin);
     state.data = j.data; state.dilewati = j.dilewati; state.terakhir = Date.now(); state.error = '';
     try { localStorage.setItem('cache', JSON.stringify(j.data)); } catch (e) { }
     mulaiApp();
   } catch (e) {
-    state.pin = ''; state.api = lamaApi;
+    state.pin = '';
     const el = $('#lErr'); if (el) el.textContent = e.message;
     const b = $('#lBtn'); if (b) { b.disabled = false; b.textContent = 'Masuk'; }
   }
