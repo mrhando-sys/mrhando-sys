@@ -307,11 +307,26 @@ function daftarKategori(jenis, terpilih) {
   if (terpilih && !hasil.includes(terpilih)) hasil.unshift(terpilih);
   return hasil;
 }
+
+/* Form ikut naik saat keyboard HP muncul, supaya tombol Simpan tetap terlihat */
+function sesuaikanKeyboard() {
+  const s = $('#sheet'), vv = window.visualViewport;
+  if (!s || !vv) return;
+  s.style.bottom = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) + 'px';
+  const p = $('.panel', s);
+  if (p) p.style.maxHeight = Math.round(vv.height * 0.94) + 'px';
+}
+
 function bukaForm(x) {
   form = { id: x ? x.id : '', cek: x ? `${x.tanggal}|${x.nominal}` : '', jenis: x ? x.jenis : 'keluar', nominal: x ? String(x.nominal) : '',
     kategori: x ? x.kategori : '', tanggal: x ? x.tanggal : hariIni(), catatan: x ? x.catatan : '' };
   renderForm();
-  requestAnimationFrame(() => requestAnimationFrame(() => $('#sheet').classList.add('open')));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const s = $('#sheet');
+    s.classList.add('open');
+    s.style.pointerEvents = 'auto'; // perbaikan: lapisan form harus bisa diketuk
+    sesuaikanKeyboard();
+  }));
   if (!x) setTimeout(() => { const n = $('#fNominal'); if (n) n.focus(); }, 350);
 }
 function renderForm() {
@@ -330,6 +345,7 @@ function renderForm() {
     <label class="lbl">Catatan (opsional)<input id="fCatatan" class="in" maxlength="120" placeholder="mis. makan siang" value="${esc(f.catatan)}"></label>
     <div class="aksi">${edit ? `<button class="btn hapus" data-aksi="hapus" aria-label="Hapus">${ic('trash', 22)}</button>` : ''}<button class="btn" id="btnSimpan" data-aksi="simpan">Simpan</button></div>
   </div>`;
+  sesuaikanKeyboard();
 }
 function salinInput() {
   if (!$('#fNominal')) return;
@@ -337,7 +353,9 @@ function salinInput() {
   const b = $('#fKatBaru'); if (b && !b.classList.contains('hidden') && b.value.trim()) form.kategori = b.value.trim();
 }
 function tutupSheet() {
-  const s = $('#sheet'); s.classList.remove('open'); setTimeout(() => { if (!s.classList.contains('open')) s.innerHTML = ''; }, 350);
+  const s = $('#sheet');
+  s.classList.remove('open'); s.style.pointerEvents = ''; s.style.bottom = '';
+  setTimeout(() => { if (!s.classList.contains('open')) s.innerHTML = ''; }, 350);
 }
 async function simpan() {
   salinInput();
@@ -367,9 +385,17 @@ function konfirmasiHapus() {
     <p>${x.jenis === 'masuk' ? 'Pemasukan' : 'Pengeluaran'} · ${esc(x.kategori)} · ${rp(x.nominal)}<br>${tglPanjang(x.tanggal)}</p>
     <p class="kecil">Barisnya akan dihapus permanen dari spreadsheet.</p>
     <div class="aksi"><button class="btn ghost" data-aksi="tutupDialog">Batal</button><button class="btn merah" id="btnHapusYa" data-aksi="hapusYa">Ya, hapus</button></div></div>`;
-  requestAnimationFrame(() => requestAnimationFrame(() => $('#dialog').classList.add('open')));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const d = $('#dialog');
+    d.classList.add('open');
+    d.style.pointerEvents = 'auto'; // perbaikan: dialog harus bisa diketuk
+  }));
 }
-function tutupDialog() { const d = $('#dialog'); d.classList.remove('open'); setTimeout(() => { if (!d.classList.contains('open')) d.innerHTML = ''; }, 300); }
+function tutupDialog() {
+  const d = $('#dialog');
+  d.classList.remove('open'); d.style.pointerEvents = '';
+  setTimeout(() => { if (!d.classList.contains('open')) d.innerHTML = ''; }, 300);
+}
 async function hapusYa() {
   const id = form.id, cek = form.cek, btn = $('#btnHapusYa'); btn.disabled = true; btn.innerHTML = '<i class="spin"></i>';
   try {
@@ -474,10 +500,20 @@ document.addEventListener('change', e => {
   };
   if (m[t.id]) m[t.id]();
 });
+document.addEventListener('focusin', e => {
+  if (e.target.closest && e.target.closest('#sheet') && /INPUT/.test(e.target.tagName)) {
+    setTimeout(() => { try { e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x) { } }, 300);
+  }
+});
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'lPin') masuk(); });
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && state.pin && Date.now() - state.terakhir > 60000) muat();
 });
+if (window.visualViewport) {
+  const geser = () => { const s = $('#sheet'); if (s && s.classList.contains('open')) sesuaikanKeyboard(); };
+  window.visualViewport.addEventListener('resize', geser);
+  window.visualViewport.addEventListener('scroll', geser);
+}
 
 /* ---------- Mulai ---------- */
 const tabBtn = (v, ikon, label) => `<button class="tab" data-aksi="tab" data-v="${v}">${ic(ikon, 24)}<span>${label}</span></button>`;
