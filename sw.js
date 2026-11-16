@@ -1,4 +1,4 @@
-const CACHE = 'keuangan-v2';
+const CACHE = 'keuangan-v3';
 const ASET = ['./', './index.html', './style.css', './app.js', './manifest.json'];
 
 self.addEventListener('install', e => {
