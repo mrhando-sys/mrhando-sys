@@ -50,19 +50,21 @@ const labelGrup = s => {
 let cache = [];
 try { cache = JSON.parse(localStorage.getItem('cache') || '[]'); } catch (e) { }
 const state = {
-  api: API_URL, user: localStorage.getItem('user') || '', pin: localStorage.getItem('pin') || '',
+  api: API_URL, user: localStorage.getItem('user') || '', token: localStorage.getItem('token') || '', dua: null,
   data: cache, tab: 'beranda', periode: 'bulan', dari: '', sampai: '',
   loading: false, error: '', dilewati: 0, terakhir: 0,
   r: { q: '', jenis: 'semua', kat: '', dari: '', sampai: '', limit: 60, buka: false }
 };
 let form = null;
+try { localStorage.removeItem('pin'); } catch (e) { } // PIN lama tidak lagi disimpan di HP
+const salahAuth = e => e && (e.kode === 'PIN' || e.kode === 'SESI');
 
 /* ---------- API ---------- */
 async function panggil(aksi, data = {}) {
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), 30000);
   try {
-    const res = await fetch(state.api, { method: 'POST', body: JSON.stringify({ aksi, user: state.user, pin: state.pin, ...data }), signal: ctrl.signal });
+    const res = await fetch(state.api, { method: 'POST', body: JSON.stringify({ aksi, token: state.token, ...data }), signal: ctrl.signal });
     const j = await res.json();
     if (!j.ok) throw Object.assign(new Error(j.pesan || 'Terjadi kesalahan.'), { kode: j.kode });
     return j;
@@ -78,10 +80,10 @@ async function muat() {
   state.loading = true; render();
   try {
     const j = await panggil('baca');
-    state.data = j.data; state.dilewati = j.dilewati; state.error = ''; state.terakhir = Date.now();
+    state.data = j.data; state.dilewati = j.dilewati; state.dua = j.dua; state.error = ''; state.terakhir = Date.now();
     try { localStorage.setItem('cache', JSON.stringify(j.data)); } catch (e) { }
   } catch (e) {
-    if (e.kode === 'PIN') return keluar(e.message);
+    if (salahAuth(e)) return keluar(e.message);
     state.error = e.message; toast(e.message, 'err');
   }
   state.loading = false; render();
@@ -274,7 +276,9 @@ function viewAkun() {
     <div class="baris"><span>Status</span><b class="${state.error ? 'buruk' : 'bagus'}">${state.error ? 'Bermasalah' : 'Terhubung'}</b></div>
     <div class="baris"><span>Transaksi terbaca</span><b>${state.data.length}</b></div>
     ${state.dilewati ? `<div class="baris"><span>Baris tidak terbaca</span><b class="buruk">${state.dilewati}</b></div>` : ''}
-    <div class="baris"><span>Terakhir diperbarui</span><b>${wkt}</b></div></div>
+    <div class="baris"><span>Terakhir diperbarui</span><b>${wkt}</b></div>
+    <div class="baris"><span>Verifikasi 2 langkah</span><b class="${state.dua ? 'bagus' : 'buruk'}">${state.dua === null ? '–' : state.dua ? 'Aktif' : 'Belum aktif'}</b></div></div>
+  ${state.dua === false ? '<p class="catatan">Aktifkan 2FA lewat fungsi siapkan2FA di Apps Script supaya data lebih aman.</p>' : ''}
   ${state.error ? `<div class="card galat">${esc(state.error)}</div>` : ''}
   ${state.dilewati ? '<p class="catatan">Baris yang tidak terbaca biasanya punya tanggal atau nominal yang kosong atau formatnya tidak dikenali.</p>' : ''}
   <button class="btn ghost" data-aksi="muat">${ic('refresh', 20)} Muat ulang data</button>
@@ -283,7 +287,7 @@ function viewAkun() {
 
 /* ---------- Render utama ---------- */
 function render(animasi = false, paksa = false) {
-  if (!state.pin) return;
+  if (!state.token) return;
   const a = document.activeElement;
   if (!paksa && a && a.closest && a.closest('#view') && /INPUT|SELECT/.test(a.tagName)) { if (state.tab === 'riwayat') isiDaftar(); return; }
   const judul = { beranda: 'Ringkasan', grafik: 'Grafik', riwayat: 'Riwayat', akun: 'Akun' };
@@ -375,7 +379,7 @@ async function simpan() {
     if (navigator.vibrate) navigator.vibrate(25);
     render(); muat();
   } catch (e) {
-    if (e.kode === 'PIN') { tutupSheet(); return keluar(e.message); }
+    if (salahAuth(e)) { tutupSheet(); return keluar(e.message); }
     btn.disabled = false; btn.textContent = 'Simpan'; toast('Gagal menyimpan: ' + e.message, 'err');
   }
 }
@@ -403,7 +407,7 @@ async function hapusYa() {
     state.data = state.data.filter(x => x.id !== id);
     tutupDialog(); tutupSheet(); toast('Transaksi dihapus', 'ok'); render(); muat();
   } catch (e) {
-    if (e.kode === 'PIN') { tutupDialog(); tutupSheet(); return keluar(e.message); }
+    if (salahAuth(e)) { tutupDialog(); tutupSheet(); return keluar(e.message); }
     btn.disabled = false; btn.textContent = 'Ya, hapus'; toast('Gagal menghapus: ' + e.message, 'err');
   }
 }
@@ -415,30 +419,34 @@ function tampilLogin(pesan = '') {
   el.innerHTML = `<div class="login-in"><div class="orb besar">${ic('lock', 36)}</div><h1>Keuangan Pribadi</h1><p>Masuk untuk membuka.</p>
     <input id="lUser" class="in" type="text" placeholder="Username" autocomplete="username" autocapitalize="none" autocorrect="off" value="${esc(state.user)}">
     <input id="lPin" class="in pin" type="password" inputmode="numeric" placeholder="PIN" autocomplete="current-password">
+    <input id="lKode" class="in pin" type="text" inputmode="numeric" maxlength="7" placeholder="Kode 2FA" autocomplete="one-time-code">
     <p class="err" id="lErr">${esc(pesan)}</p><button class="btn" id="lBtn" data-aksi="masuk">Masuk</button></div>`;
 }
 async function masuk() {
-  const user = $('#lUser').value.trim(), pin = $('#lPin').value.trim(), err = $('#lErr'), btn = $('#lBtn');
+  const user = $('#lUser').value.trim(), pin = $('#lPin').value.trim(), kode = $('#lKode').value.replace(/\D/g, ''), err = $('#lErr'), btn = $('#lBtn');
   if (!API_URL.startsWith('https://script.google.com/')) { err.textContent = 'URL Web App di app.js belum diisi dengan benar.'; return; }
   if (!user) { err.textContent = 'Username wajib diisi.'; return; }
   if (!pin) { err.textContent = 'PIN wajib diisi.'; return; }
   btn.disabled = true; btn.innerHTML = '<i class="spin"></i>'; err.textContent = '';
-  state.user = user; state.pin = pin;
+  state.token = '';
   try {
-    const j = await panggil('baca');
-    localStorage.setItem('user', user); localStorage.setItem('pin', pin);
+    const j = await panggil('masuk', { user, pin, kode });
+    state.token = j.token; state.user = user; state.dua = j.dua;
+    localStorage.setItem('token', j.token); localStorage.setItem('user', user);
     state.data = j.data; state.dilewati = j.dilewati; state.terakhir = Date.now(); state.error = '';
     try { localStorage.setItem('cache', JSON.stringify(j.data)); } catch (e) { }
     mulaiApp();
   } catch (e) {
-    state.pin = '';
     const el = $('#lErr'); if (el) el.textContent = e.message;
+    const k = $('#lKode'); if (k) { k.value = ''; }
+    const p = $('#lPin'); if (p) { p.value = ''; }
     const b = $('#lBtn'); if (b) { b.disabled = false; b.textContent = 'Masuk'; }
   }
 }
-function keluar(pesan = '') {
-  localStorage.removeItem('pin'); localStorage.removeItem('cache');
-  state.pin = ''; state.data = []; tutupSheet(); tampilLogin(pesan);
+function keluar(pesan = '', cabut = false) {
+  if (cabut && state.token) panggil('keluar').catch(() => { }); // cabut sesi di server (token terbaca sebelum dihapus di bawah)
+  localStorage.removeItem('token'); localStorage.removeItem('cache');
+  state.token = ''; state.data = []; state.dua = null; tutupSheet(); tampilLogin(pesan);
 }
 function mulaiApp() {
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#nav').classList.remove('hidden');
@@ -480,13 +488,14 @@ document.addEventListener('click', e => {
     jenisR: () => { state.r.jenis = v; state.r.limit = 60; render(false, true); },
     resetR: () => { Object.assign(state.r, { q: '', kat: '', dari: '', sampai: '', jenis: 'semua', limit: 60 }); render(false, true); },
     lagi: () => { state.r.limit += 60; isiDaftar(); },
-    muat, keluar: () => keluar(), masuk
+    muat, keluar: () => keluar('', true), masuk
   };
   if (aksi[el.dataset.aksi]) aksi[el.dataset.aksi]();
 });
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.id === 'fNominal') t.value = fmtAngka(t.value);
+  else if (t.id === 'lKode') t.value = t.value.replace(/[^\d ]/g, '');
   else if (t.id === 'q') { state.r.q = t.value; state.r.limit = 60; isiDaftar(); }
 });
 document.addEventListener('change', e => {
@@ -505,9 +514,9 @@ document.addEventListener('focusin', e => {
     setTimeout(() => { try { e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x) { } }, 300);
   }
 });
-document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'lPin') masuk(); });
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.target.id === 'lPin' || e.target.id === 'lKode')) masuk(); });
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && state.pin && Date.now() - state.terakhir > 60000) muat();
+  if (!document.hidden && state.token && Date.now() - state.terakhir > 60000) muat();
 });
 if (window.visualViewport) {
   const geser = () => { const s = $('#sheet'); if (s && s.classList.contains('open')) sesuaikanKeyboard(); };
@@ -518,5 +527,5 @@ if (window.visualViewport) {
 /* ---------- Mulai ---------- */
 const tabBtn = (v, ikon, label) => `<button class="tab" data-aksi="tab" data-v="${v}">${ic(ikon, 24)}<span>${label}</span></button>`;
 $('#nav').innerHTML = `<div class="nav-in">${tabBtn('beranda', 'home', 'Beranda')}${tabBtn('grafik', 'chart', 'Grafik')}<button class="fab" data-aksi="tambah" aria-label="Tambah transaksi">${ic('plus', 30)}</button>${tabBtn('riwayat', 'list', 'Riwayat')}${tabBtn('akun', 'user', 'Akun')}</div>`;
-if (state.api && state.pin) { mulaiApp(); muat(); } else tampilLogin();
+if (state.api && state.token) { mulaiApp(); muat(); } else tampilLogin();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { });
