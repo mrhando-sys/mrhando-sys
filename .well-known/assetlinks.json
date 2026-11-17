@@ -2,7 +2,7 @@
       "relation": ["delegate_permission/common.handle_all_urls"],
       "target": {
         "namespace": "android_app",
-        "package_name": "com.mrhandosys.keuangan",
-        "sha256_cert_fingerprints": ["53:35:38:C7:E8:9A:65:FA:DF:53:E3:03:BA:57:C2:95:D8:C1:E9:EE:44:48:B5:E5:12:2C:74:41:DA:A2:DF:E3"]
+        "package_name": "io.github.mrhando_sys.twa",
+        "sha256_cert_fingerprints": ["FC:CB:69:FE:CE:EE:E9:08:97:C6:C7:CB:EB:15:74:38:14:B2:F4:5E:14:EE:77:29:3C:EA:F0:1C:50:41:76:41"]
       }
     }]
